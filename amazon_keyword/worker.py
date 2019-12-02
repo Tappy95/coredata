@@ -1,6 +1,6 @@
 import pipeflow
 from pipeflow import NsqInputEndpoint, NsqOutputEndpoint
-from task_protocal import HYTask
+from task_protocol import HYTask
 from config import INPUT_NSQ_CONF, OUTPUT_NSQ_CONF
 
 WORKER_NUMBER = 2

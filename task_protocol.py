@@ -6,28 +6,28 @@ from pipeflow import Task
 class BaseTask(Task):
 
     @property
-    def from(self):
+    def from_name(self):
         return self._from
 
-    @from.setter
-    def from(self, from):
-        self._from = from
+    @from_name.setter
+    def from_name(self, from_name):
+        self._from = from_name
 
     @property
-    def to(self):
+    def to_name(self):
         return self._to
 
-    @to.setter
-    def to(self, to):
-        self._to = to
+    @to_name.setter
+    def to_name(self, to_name):
+        self._to = to_name
 
 
 class HYTask(BaseTask):
 
     def __init__(self, task):
         if isinstance(task, Task):
-            super().__init__(data=task.get_raw_data(), from=task.get_from(),
-                             to=task.get_to(), confirm_handle=task.get_confirm_handle())
+            super().__init__(data=task.get_raw_data(), from_name=task.get_from(),
+                             to_name=task.get_to(), confirm_handle=task.get_confirm_handle())
             self._decoded_data = None
         else:
             raise ValueError('is not a task')
