@@ -1,3 +1,4 @@
+import json
 import time
 import hashlib
 import aiohttp
@@ -9,7 +10,7 @@ class BaseAPI:
 
     u_name = 'bailun'
     skey = '88UN2AZ1kUfi1HAg'
-    address = 'http://111.231.88.85:38080'
+    address = 'http://114.67.80.59:38080'
     api = None
     param = None
 
@@ -22,7 +23,7 @@ class BaseAPI:
         self.param.update({"u_name": self.u_name, "time": timestamp, "sign": signature})
         self.param.move_to_end("u_name", last=False)
 
-    def request(self, timeout):
+    def request(self, timeout=30):
         self.sign()
         try:
             url = self.address + self.api
@@ -37,7 +38,7 @@ class BaseAPI:
             logger.error("[request error] url: {}".format(url), exc_info=exc_info)
             exc.__traceback__ = None
 
-    async aio_request(self, timeout):
+    async def aio_request(self, timeout=30):
         self.sign()
         try:
             url = self.address + self.api

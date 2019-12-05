@@ -43,12 +43,12 @@ class HYTask(BaseTask):
     @property
     def data(self):
         if self._decoded_data is None:
-            self._decoded_data = json.loads(zlib.decompress(self._data))
+            self._decoded_data = json.loads(self._data)
         return self._decoded_data
 
     @data.setter
     def data(self, data):
-        self._data = zlib.compress(json.dumps(data).encode('utf-8'))
+        self._data = json.dumps(data).encode('utf-8')
         self._decoded_data = data
 
     def spawn(self, data):
