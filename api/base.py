@@ -15,6 +15,9 @@ class BaseAPI:
     param = None
 
     def sign(self):
+        k_ls = [k for k, v in self.param.items() if v is None or v == '']
+        for k in k_ls:
+            self.param.pop(k)
         timestamp = str(int(time.time()))
         raw_data = self.u_name + self.skey + ''.join(str(v) for v in self.param.values()) + \
                 str(int(timestamp))
