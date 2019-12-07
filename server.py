@@ -9,5 +9,8 @@ if __name__ == '__main__':
     if args.worker == 'amazon_keyword':
         worker = importlib.import_module('.worker', 'amazon_keyword')
         worker.run()
+    elif args.worker == 'amazon_category':
+        worker = importlib.import_module('.worker', 'amazon_category')
+        worker.run()
     else:
         raise ValueError('not support platform')
