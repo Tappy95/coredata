@@ -1,7 +1,8 @@
 import pipeflow
 import  json
 from sqlalchemy import create_engine
-from sqlalchemy.sql import select, and_, bindparam
+# from sqlalchemy.sql import select, and_, bindparam, insert
+from sqlalchemy.dialects.mysql import insert
 from pipeflow import NsqInputEndpoint, NsqOutputEndpoint
 from task_protocol import HYTask
 from models.amazon_models import amazon_keyword_rank
@@ -53,16 +54,20 @@ def add_amaz_mysql(data):
     asin_list = []
     [asin_list.append(show_amaz['result'][x]['keyword_list'][-1]) for x in range(len(show_amaz['result']) -1)]
 
+    asin_list = json.loads(json.dumps(asin_list).replace('start_time', 'update_time').replace('station', 'site').replace('keyword_rank','rank'))
+
     for i in asin_list:
         for k in sta.keys():
-            if i['station'] == int(k):
-                i['station'] = sta[k]
+            if i['site'] == int(k):
+                i['site'] = sta[k]
 
-    asin_list = json.loads(
-        json.dumps(asin_list).replace('start_time', 'update_time').replace('station', 'site').replace('keyword_rank',
-                                                                                                      'rank'))
     conn = engine.connect()
-    conn.execute(amazon_keyword_rank.insert(), asin_list)
+
+    for d in asin_list:
+        insert_stmt = insert(amazon_keyword_rank).values(asin_list)
+        on_conflict_stmt = insert_stmt.on_duplicate_key_update({"rank": d['rank'], "aid": d['aid'], "update_time": d['update_time']})
+        conn.execute(on_conflict_stmt)
+
 
 
 # 删除单个或多个关键词排名监控信息
@@ -98,6 +103,6 @@ def run():
     group.add_input_endpoint('input', input_end)
     group.add_output_endpoint('output', output_end, ('test',))
 
-    server.add_routine_worker(add_amaz_mysql, interval=60*60*24)
+    # server.add_routine_worker(add_amaz_mysql, interval=60*60*24)
     server.run()
 
