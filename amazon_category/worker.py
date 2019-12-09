@@ -86,12 +86,12 @@ def handle(group, task):
             for infos in categorys.parsed_infos():
                 category_id_paths = map(lambda x:x["category_id_path"], infos)
                 old_records = conn.execute(
-                    select([amazon_category.c.category_id_path, amazon_category.c.update_time])
+                    select([amazon_category.c.category_id_path, amazon_category.c.hy_create_time])
                     .where(
                         amazon_category.c.category_id_path.in_(category_id_paths)
                     )).fetchall()
                 old_records_map = {item[amazon_category.c.category_id_path]:
-                                item[amazon_category.c.update_time]
+                                item[amazon_category.c.hy_create_time]
                                 for item in old_records}
                 update_records = []
                 add_records = []

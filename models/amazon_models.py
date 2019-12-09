@@ -34,6 +34,7 @@ amazon_category = Table(
 amazon_product = Table(
     'amazon_product', metadata,
     Column('asin', String),
+    Column('site', String),
     Column('parent_asin', String),
     Column('merchant_id', String),
     Column('merchant_name', String),

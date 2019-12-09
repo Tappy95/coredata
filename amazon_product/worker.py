@@ -34,7 +34,8 @@ class productInfo:
         "other": 3
     }
 
-    def __init__(self, infos):
+    def __init__(self, site, infos):
+        self.site = site
         self.infos = infos
         self.time_now = datetime.now()
 
@@ -52,6 +53,7 @@ class productInfo:
     def parse(self, info):
         parsed_info = {
             "asin": info["asin"],
+            "site": self.site,
             "parent_asin": info["parent_asin"],
             "merchant_id": info["merchant_code"],
             "merchant_name": info["merchant"],
@@ -93,7 +95,7 @@ def handle(group, task):
     asins = hy_task.task_data['asins']
     result = GetAmazonProductBySearch(station, asins=asins).request()
     if result["status"] == "success":
-        products = productInfo(result["result"])
+        products = productInfo(hy_task.task_data['site'], result["result"])
         with engine.connect() as conn:
             for infos in products.parsed_infos():
                 asins = map(lambda x:x["asin"], infos)
