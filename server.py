@@ -12,5 +12,8 @@ if __name__ == '__main__':
     elif args.worker == 'amazon_category':
         worker = importlib.import_module('.worker', 'amazon_category')
         worker.run()
+    elif args.worker == 'amazon_product':
+        worker = importlib.import_module('.worker', 'amazon_product')
+        worker.run()
     else:
         raise ValueError('not support platform')

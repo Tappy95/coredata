@@ -7,7 +7,7 @@ class GetAmazonProductBySearch(BaseAPI):
 
     api = '/hysj_v4/amazon_api/asin_infos'
 
-    def __init__(self, station, current_page=None, best_rank_flag=None, asin=None,
+    def __init__(self, station, current_page=None, best_rank_flag=None, asins=None,
                  title=None, p_l1_id=None, p_l2_id=None, p_l3_id=None, p_l4_id=None,
                  p_l5_id=None, p_l6_id=None, p_l7_id=None, p_l8_id=None, p_l9_id=None,
                  p_l10_id=None, rank_begin=None, rank_end=None, three_day_rank_begin=None,
@@ -29,7 +29,8 @@ class GetAmazonProductBySearch(BaseAPI):
                  registration_type=None, order_by=None, order_by_type=None):
         self.param = OrderedDict({
             "station": station, "current_page": current_page,
-            "best_rank_flag": best_rank_flag, "asin": asin, "title": title,
+            "best_rank_flag": best_rank_flag, "asin": ','.join(asins) if asins else None,
+            "title": title,
             "p_l1_id": p_l1_id, "p_l2_id": p_l2_id, "p_l3_id": p_l3_id, "p_l4_id": p_l4_id,
             "p_l5_id": p_l5_id, "p_l6_id": p_l6_id, "p_l7_id": p_l7_id, "p_l8_id": p_l8_id,
             "p_l9_id": p_l9_id, "p_l10_id": p_l10_id, "rank_begin": rank_begin,

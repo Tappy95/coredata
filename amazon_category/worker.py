@@ -72,7 +72,7 @@ class CategoryInfo:
         info_cnt = len(self.infos)
         i = 0
         while i < info_cnt:
-            yield list(map(lambda x:self.parse(x), self.infos[i:i+batch]))
+            yield list(map(self.parse, self.infos[i:i+batch]))
             i += batch
 
 

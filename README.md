@@ -23,3 +23,20 @@ example:
             }
         }
 ```
+
+#### amazon商品同步
+```
+任务:
+    mq:
+        nsq:
+            topic:
+                haiying.amazon.product
+    数据:
+        {
+            "task": "amazon_product_sync"
+            "data": {
+                "site": "us",
+                "asins": ["xxxx", "xxxxx"],
+            }
+        }
+```
