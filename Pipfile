@@ -13,6 +13,7 @@ aio-pika = "*"
 uvloop = "*"
 pynsq = "==0.9.0b1"
 sqlalchemy = "*"
+requests = "*"
 
 [requires]
 python_version = "3.7"
