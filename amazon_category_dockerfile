@@ -4,7 +4,8 @@ COPY . /app
 
 WORKDIR /app
 
-RUN pip install -p Pipfile \
+RUN pip install -r requirements.txt \
+    && pip install -r ./pipeflow/requirements.txt \
     && groupadd -r admin && useradd -r -g admin admin
 
 USER admin

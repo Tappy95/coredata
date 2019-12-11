@@ -12,6 +12,7 @@ pika = "*"
 aio-pika = "*"
 uvloop = "*"
 pynsq = "==0.9.0b1"
+sqlalchemy = "*"
 
 [requires]
 python_version = "3.7"
