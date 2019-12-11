@@ -3,7 +3,7 @@ from urllib.parse import ParseResult, urlunparse, urlencode
 from .log import logger
 
 
-async def pub_to_nsq(address, topic, msg, timeout=20):
+async def pub_to_nsq(address, topic, msg, timeout=aiohttp.ClientTimeout(total=60)):
     url = urlunparse(ParseResult(scheme='http', netloc='address', path='/pub', params='',
                                  query=urlencode({'topic': topic}), fragment=''))
     async with aiohttp.ClientSession(timeout=timeout) as session:
