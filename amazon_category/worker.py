@@ -142,5 +142,5 @@ def run():
     group.set_handle(handle, "thread")
     group.add_input_endpoint('input', input_end)
 
-    group.add_routine_worker(create_task, hour=8, minute=30)
+    group.add_routine_worker(create_task, interval=60*24*3, immediately=True)
     server.run()

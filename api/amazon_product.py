@@ -101,3 +101,14 @@ class GetAmazonProductStatistic(BaseAPI):
             "station": station,
             "asins": ','.join(asins),
         })
+
+
+class GetAmazonProductAdditionalInfo(BaseAPI):
+
+    api = '/hysj_v4/amazon_api/asin_additional_information'
+
+    def __init__(self, station, asins):
+        self.param = OrderedDict({
+            "station": station,
+            "asins": ','.join(asins)
+        })

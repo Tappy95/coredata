@@ -11,4 +11,4 @@ USER admin
 
 ENV ENV_TYPE=PRODUCTION
 
-ENTRYPOINT [ "python", "server.py"]
+ENTRYPOINT [ "python", "server.py", "-w", "amazon_product"]
