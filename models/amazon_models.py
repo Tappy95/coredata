@@ -1,8 +1,8 @@
 from sqlalchemy import Table, Column, PrimaryKeyConstraint, Integer, String, TIMESTAMP,\
-    Boolean, TEXT, DECIMAL
+    Boolean, TEXT, DECIMAL, DateTime
 from sqlalchemy.dialects.mysql import TINYINT
-from . import metadata
-
+from models import metadata
+import datetime
 
 amazon_keyword_rank = Table(
     'amazon_keyword_rank', metadata,
@@ -15,6 +15,36 @@ amazon_keyword_rank = Table(
     PrimaryKeyConstraint('asin', 'keyword', 'site', name='pk')
 )
 
+amazon_keywrd_task = Table(
+    'amazon_keywrd_task', metadata,
+    Column('asin', String),
+    Column('id', String),
+    Column('keyword', String),
+    Column('capture_status', String),
+    Column('status', String),
+    Column('monitoring_num', Integer),
+    Column('monitoring_count', Integer),
+    Column('start_time', TIMESTAMP),
+    Column('created_at', TIMESTAMP),
+    Column('end_time', TIMESTAMP),
+    Column('monitoring_type', String),
+    Column('deleted_at', TIMESTAMP),
+    Column('phone_num', Integer),
+    Column('station', String),
+    PrimaryKeyConstraint('id', name='pk')
+)
+
+amazon_keyword_result = Table(
+    'amazon_keyword_result', metadata,
+    Column('asin', String),
+    Column('id', String),
+    Column('keyword', String),
+    Column('status', String),
+    Column('create_at', DateTime, default=datetime.datetime.now),
+    Column('station', String),
+    Column('is_ins', String),
+    PrimaryKeyConstraint('id', name='pk')
+)
 
 amazon_category = Table(
     'amazon_category', metadata,
