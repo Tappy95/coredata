@@ -15,8 +15,8 @@ amazon_keyword_rank = Table(
     PrimaryKeyConstraint('asin', 'keyword', 'site', name='pk')
 )
 
-amazon_keywrd_task = Table(
-    'amazon_keywrd_task', metadata,
+amazon_keyword_task = Table(
+    'amazon_keyword_task', metadata,
     Column('asin', String),
     Column('id', String),
     Column('keyword', String),
@@ -31,20 +31,10 @@ amazon_keywrd_task = Table(
     Column('deleted_at', TIMESTAMP),
     Column('phone_num', Integer),
     Column('station', String),
+    Column('is_add', String),
     PrimaryKeyConstraint('id', name='pk')
 )
 
-amazon_keyword_result = Table(
-    'amazon_keyword_result', metadata,
-    Column('asin', String),
-    Column('id', String),
-    Column('keyword', String),
-    Column('status', String),
-    Column('create_at', DateTime, default=datetime.datetime.now),
-    Column('station', String),
-    Column('is_ins', String),
-    PrimaryKeyConstraint('id', name='pk')
-)
 
 amazon_category = Table(
     'amazon_category', metadata,
