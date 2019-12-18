@@ -43,11 +43,12 @@ amazon_category = Table(
     Column('level', TINYINT),
     Column('is_leaf', Boolean),
     Column('parent_id', String),
+    Column('site', String),
     Column('category_id_path', String),
     Column('category_name_path', String),
     Column('hy_create_time', TIMESTAMP),
     Column('update_time', TIMESTAMP),
-    PrimaryKeyConstraint('category_id_path', name='pk')
+    PrimaryKeyConstraint('category_id_path', 'site', name='pk')
 )
 
 
@@ -56,6 +57,7 @@ amazon_product = Table(
     Column('asin', String),
     Column('site', String),
     Column('parent_asin', String),
+    Column('category_ids', String),
     Column('merchant_id', String),
     Column('merchant_name', String),
     Column('delivery', TINYINT),
@@ -70,18 +72,28 @@ amazon_product = Table(
     Column('img', String),
     Column('title', String),
     Column('brand', String),
-    Column('is_amazon_choice', Boolean),
-    Column('is_best_seller', Boolean),
-    Column('is_prime', Boolean),
+    Column('is_amazon_choice', TINYINT),
+    Column('is_best_seller', TINYINT),
+    Column('is_prime', TINYINT),
     Column('first_arrival', TIMESTAMP),
     Column('hy_update_time', TIMESTAMP),
     Column('update_time', TIMESTAMP),
     Column('imgs', String),
     Column('description', TEXT),
-    PrimaryKeyConstraint('asin', name='pk')
+    PrimaryKeyConstraint('asin', 'site', name='pk')
 )
 #listing_asins
 #chinese_sellers
 #chinese_sellers_in_merhants
 #is_registered
 #registration
+
+
+amazon_product_relationship = Table(
+    'amazon_product_relationship', metadata,
+    Column('to_asin', String),
+    Column('site', String),
+    Column('asin', String),
+    Column('update_time', TIMESTAMP),
+    PrimaryKeyConstraint('to_asin', 'site', 'asin',  name='pk')
+)
