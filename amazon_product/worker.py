@@ -164,6 +164,7 @@ def handle(group, task):
     current_page = 1
     no_more_data = False
     while not no_more_data:
+        logger.info("[request product api] {} {}".format(current_page, hy_task.task_data))
         result = GetAmazonProductBySearch(station, current_page=current_page, **params).request()
         if not result or result["status"] != "success":
             break
