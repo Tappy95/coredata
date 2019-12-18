@@ -20,7 +20,6 @@ amazon_keyword_task = Table(
     Column('asin', String),
     Column('id', String),
     Column('keyword', String),
-    Column('capture_status', String),
     Column('status', String),
     Column('monitoring_num', Integer),
     Column('monitoring_count', Integer),
@@ -29,9 +28,9 @@ amazon_keyword_task = Table(
     Column('end_time', TIMESTAMP),
     Column('monitoring_type', String),
     Column('deleted_at', TIMESTAMP),
-    Column('phone_num', Integer),
     Column('station', String),
     Column('is_add', String),
+    Column('last_update', String),
     PrimaryKeyConstraint('id', name='pk')
 )
 
