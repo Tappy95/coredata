@@ -280,12 +280,12 @@ def handle(group, task):
                     conn.execute(amazon_product_relationship.insert(), add_records)
                 if update_records:
                     conn.execute(
-                        amazon_product.update()
+                        amazon_product_relationship.update()
                         .where(
                             and_(
-                                amazon_product.c.to_asin == bindparam('_to_asin'),
-                                amazon_product.c.site == bindparam('_site'),
-                                amazon_product.c.asin == bindparam('_asin')
+                                amazon_product_relationship.c.to_asin == bindparam('_to_asin'),
+                                amazon_product_relationship.c.site == bindparam('_site'),
+                                amazon_product_relationship.c.asin == bindparam('_asin')
                             )
                         )
                         .values(
