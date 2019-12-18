@@ -1,6 +1,6 @@
 import re
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from collections import defaultdict
 from sqlalchemy import create_engine
 from sqlalchemy.sql import select, and_, bindparam
@@ -14,6 +14,8 @@ from util.pub import pub_to_nsq
 from util.log import logger
 
 WORKER_NUMBER = 10
+MAX_STATEMENT = 4900
+RELATIONSHIP_MIN_UPDATE = timedelta(days=14)
 TOPIC_NAME = 'haiying.amazon.product'
 
 engine = create_engine(
@@ -208,49 +210,53 @@ def handle(group, task):
                     for item in update_records:
                         item['_asin'] = item['asin']
                         item['_site'] = item['site']
-                    conn.execute(
-                        amazon_product.update()
-                        .where(
-                            and_(
-                                amazon_product.c.asin == bindparam('_asin'),
-                                amazon_product.c.site == bindparam('_site')
+                    i = 0
+                    while i < len(update_records):
+                        conn.execute(
+                            amazon_product.update()
+                            .where(
+                                and_(
+                                    amazon_product.c.asin == bindparam('_asin'),
+                                    amazon_product.c.site == bindparam('_site')
+                                )
                             )
+                            .values(
+                                category_ids=bindparam('category_ids'),
+                                parent_asin=bindparam('parent_asin'),
+                                merchant_id=bindparam('merchant_id'),
+                                merchant_name=bindparam('merchant_name'),
+                                delivery=bindparam('delivery'),
+                                reviews_number=bindparam('reviews_number'),
+                                review_score=bindparam('review_score'),
+                                seller_number=bindparam('seller_number'),
+                                qa_number=bindparam('qa_number'),
+                                not_exist=bindparam('not_exist'),
+                                status=bindparam('status'),
+                                price=bindparam('price'),
+                                shipping_weight=bindparam('shipping_weight'),
+                                img=bindparam('img'),
+                                title=bindparam('title'),
+                                brand=bindparam('brand'),
+                                is_amazon_choice=bindparam('is_amazon_choice'),
+                                is_best_seller=bindparam('is_best_seller'),
+                                is_prime=bindparam('is_prime'),
+                                first_arrival=bindparam('first_arrival'),
+                                hy_update_time=bindparam('hy_update_time'),
+                                update_time=bindparam('update_time'),
+                                imgs=bindparam('imgs'),
+                                description=bindparam('description')
+                            ),
+                            update_records[i:i+MAX_STATEMENT]
                         )
-                        .values(
-                            category_ids=bindparam('category_ids'),
-                            parent_asin=bindparam('parent_asin'),
-                            merchant_id=bindparam('merchant_id'),
-                            merchant_name=bindparam('merchant_name'),
-                            delivery=bindparam('delivery'),
-                            reviews_number=bindparam('reviews_number'),
-                            review_score=bindparam('review_score'),
-                            seller_number=bindparam('seller_number'),
-                            qa_number=bindparam('qa_number'),
-                            not_exist=bindparam('not_exist'),
-                            status=bindparam('status'),
-                            price=bindparam('price'),
-                            shipping_weight=bindparam('shipping_weight'),
-                            img=bindparam('img'),
-                            title=bindparam('title'),
-                            brand=bindparam('brand'),
-                            is_amazon_choice=bindparam('is_amazon_choice'),
-                            is_best_seller=bindparam('is_best_seller'),
-                            is_prime=bindparam('is_prime'),
-                            first_arrival=bindparam('first_arrival'),
-                            hy_update_time=bindparam('hy_update_time'),
-                            update_time=bindparam('update_time'),
-                            imgs=bindparam('imgs'),
-                            description=bindparam('description')
-                        ),
-                        update_records
-                    )
+                        i += MAX_STATEMENT
 
             # update product relation
             for infos in relationships.parsed_infos():
                 asins = map(lambda x:x["asin"], infos)
                 old_records = conn.execute(
                     select([amazon_product_relationship.c.asin,
-                            amazon_product_relationship.c.to_asin])
+                            amazon_product_relationship.c.to_asin,
+                            amazon_product_relationship.c.update_time])
                     .where(
                         and_(
                             amazon_product_relationship.c.asin.in_(asins),
@@ -258,15 +264,16 @@ def handle(group, task):
                         )
                     )
                 ).fetchall()
-                old_records_map = defaultdict(set)
+                old_records_map = defaultdict(dict)
                 for item in old_records:
-                    old_records_map[item[amazon_product_relationship.c.asin]].add(
-                            item[amazon_product_relationship.c.to_asin]
-                    )
+                    old_records_map[item[amazon_product_relationship.c.asin]]\
+                            [item[amazon_product_relationship.c.to_asin]] = \
+                            item[amazon_product_relationship.c.update_time]
                 update_records = []
                 add_records = []
                 for info in infos:
-                    add_to_asins = info['to_asins'] - old_records_map.get(info['asin'], set([]))
+                    old_to_asins_map = old_records_map.get(info['asin'], {})
+                    add_to_asins = info['to_asins'] - set(old_to_asins_map)
                     update_to_asins = info['to_asins'] - add_to_asins
                     add_records.extend([{"to_asin": to_asin, "site": site,
                                          "asin": info["asin"],
@@ -275,24 +282,28 @@ def handle(group, task):
                     update_records.extend([{"_to_asin": to_asin, "_site": site,
                                             "_asin": info["asin"],
                                             "update_time": info["update_time"]}
-                                           for to_asin in update_to_asins])
+                                           for to_asin in update_to_asins
+                                           if (info["update_time"]-old_to_asins_map[to_asin]) > RELATIONSHIP_MIN_UPDATE])
                 if add_records:
                     conn.execute(amazon_product_relationship.insert(), add_records)
                 if update_records:
-                    conn.execute(
-                        amazon_product_relationship.update()
-                        .where(
-                            and_(
-                                amazon_product_relationship.c.to_asin == bindparam('_to_asin'),
-                                amazon_product_relationship.c.site == bindparam('_site'),
-                                amazon_product_relationship.c.asin == bindparam('_asin')
+                    i = 0
+                    while i < len(update_records):
+                        conn.execute(
+                            amazon_product_relationship.update()
+                            .where(
+                                and_(
+                                    amazon_product_relationship.c.to_asin == bindparam('_to_asin'),
+                                    amazon_product_relationship.c.site == bindparam('_site'),
+                                    amazon_product_relationship.c.asin == bindparam('_asin')
+                                )
                             )
+                            .values(
+                                update_time=bindparam('update_time')
+                            ),
+                            update_records[i:i+MAX_STATEMENT]
                         )
-                        .values(
-                            update_time=bindparam('update_time')
-                        ),
-                        update_records
-                    )
+                        i += MAX_STATEMENT
 
 
 def run():
