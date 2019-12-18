@@ -27,7 +27,8 @@ engine = create_engine(
 
 class CategoryInfo:
 
-    def __init__(self, infos):
+    def __init__(self, site, infos):
+        self.site = site
         self.infos = infos
         self.time_now = datetime.now()
 
@@ -38,6 +39,7 @@ class CategoryInfo:
             "parent_id": "",
             "level": info["level"],
             "is_leaf": info["is_leaf"],
+            "site": self.site,
             "category_id_path": "",
             "category_name_path": "",
             "hy_create_time": None,
@@ -78,17 +80,21 @@ class CategoryInfo:
 
 def handle(group, task):
     hy_task = HYTask(task)
-    station = hy_task.task_data['site'].upper()
+    site = hy_task.task_data['site']
+    station = site.upper()
     result = GetAmazonCategory(station).request()
     if result["status"] == "success":
-        categorys = CategoryInfo(result["result"])
+        categorys = CategoryInfo(site, result["result"])
         with engine.connect() as conn:
             for infos in categorys.parsed_infos():
                 category_id_paths = map(lambda x:x["category_id_path"], infos)
                 old_records = conn.execute(
                     select([amazon_category.c.category_id_path, amazon_category.c.hy_create_time])
                     .where(
-                        amazon_category.c.category_id_path.in_(category_id_paths)
+                        and_(
+                            amazon_category.c.category_id_path.in_(category_id_paths),
+                            amazon_category.c.site == site,
+                        )
                     )).fetchall()
                 old_records_map = {item[amazon_category.c.category_id_path]:
                                 item[amazon_category.c.hy_create_time]
@@ -105,9 +111,15 @@ def handle(group, task):
                 if update_records:
                     for item in update_records:
                         item['_id'] = item['category_id_path']
+                        item['_site'] = item['site']
                     conn.execute(
                         amazon_category.update()
-                        .where(amazon_category.c.category_id_path == bindparam('_id'))
+                        .where(
+                            and_(
+                               amazon_category.c.category_id_path == bindparam('_id'),
+                               amazon_category.c.site == bindparam('_site')
+                            )
+                        )
                         .values(
                             category_id=bindparam('category_id'),
                             category_name=bindparam('category_name'),
@@ -128,7 +140,7 @@ async def create_task():
         task = {
             "task": "amazon_category_sync",
             "data": {
-                "site": "us",
+                "site": site,
             }
         }
         await pub_to_nsq(NSQ_NSQD_HTTP_ADDR, TOPIC_NAME, json.dumps(task))
@@ -142,5 +154,5 @@ def run():
     group.set_handle(handle, "thread")
     group.add_input_endpoint('input', input_end)
 
-    server.add_routine_worker(create_task, interval=60*24*3, immediately=True)
+    server.add_routine_worker(create_task, interval=60*24*7, immediately=True)
     server.run()

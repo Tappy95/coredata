@@ -37,6 +37,7 @@ example:
             "data": {
                 "site": "us",
                 "asins": ["xxxx", "xxxxx"],
+                "category_id_path": "xxxxx"
             }
         }
 ```

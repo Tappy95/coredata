@@ -1,14 +1,15 @@
 import re
 import json
 from datetime import datetime
+from collections import defaultdict
 from sqlalchemy import create_engine
 from sqlalchemy.sql import select, and_, bindparam
 import pipeflow
 from pipeflow import NsqInputEndpoint, NsqOutputEndpoint
 from task_protocol import HYTask
 from config import *
-from api.amazon_product import GetAmazonProductBySearch
-from models.amazon_models import amazon_product
+from api.amazon_product import GetAmazonProductBySearch, GetAmazonProductAdditionalInfo
+from models.amazon_models import amazon_product, amazon_product_relationship
 from util.pub import pub_to_nsq
 from util.log import logger
 
@@ -45,15 +46,27 @@ class productInfo:
         else:
             time_format_str = "%Y-%m-%d"
         i = timestr.find(".")
-        if i != -1:
-            return datetime.strptime(timestr[:i], time_format_str)
-        else:
-            return datetime.strptime(timestr, time_format_str)
+        try:
+            if i != -1:
+                return datetime.strptime(timestr[:i], time_format_str)
+            else:
+                return datetime.strptime(timestr, time_format_str)
+        except:
+            return
+
+    def asins(self, batch=100):
+        info_cnt = len(self.infos)
+        i = 0
+        while i < info_cnt:
+            yield list(map(lambda x:x["asin"], self.infos[i:i+batch]))
+            i += batch
 
     def parse(self, info):
         parsed_info = {
             "asin": info["asin"],
             "site": self.site,
+            "category_ids": ",".join(set([item["cate_id"] for item in info["top_cates"]] +
+                                         [item["cate_id"] for item in info["sub_cates"]])),
             "parent_asin": info["parent_asin"],
             "merchant_id": info["merchant_code"],
             "merchant_name": info["merchant"],
@@ -81,7 +94,7 @@ class productInfo:
         }
         return parsed_info
 
-    def parsed_infos(self, batch=100):
+    def parsed_infos(self, batch=500):
         info_cnt = len(self.infos)
         i = 0
         while i < info_cnt:
@@ -89,21 +102,95 @@ class productInfo:
             i += batch
 
 
+class relationshipInfo:
+
+    _relationship_keys = ("bought_together", "bought_also_bought", "viewed_also_viewed",
+                          "viewed_also_bought", "sponsored_1", "sponsored_2",
+                          "compare_to_similar")
+
+    def __init__(self, site, infos):
+        self.site = site
+        self.time_now = datetime.now()
+        self.infos = []
+        for info in infos:
+            to_asins = set([])
+            i = info["last_upd_date"].find(".")
+            try:
+                if i != -1:
+                    update_time = datetime.strptime(info["last_upd_date"][:i], "%Y-%m-%d %H:%M:%S")
+                else:
+                    update_time = datetime.strptime(info["last_upd_date"], "%Y-%m-%d %H:%M:%S")
+            except:
+                update_time = self.time_now
+            for k in self._relationship_keys:
+                v = info.get(k)
+                if v:
+                    to_asins.update([item.strip(":") for item in v.split(",")])
+            if to_asins:
+                self.infos.append({"asin": info["asin"], "to_asins": to_asins,
+                                   "update_time": update_time})
+
+    def parsed_infos(self, batch=500):
+        info_cnt = len(self.infos)
+        i = 0
+        while i < info_cnt:
+            yield self.infos[i:i+batch]
+            i += batch
+
+
+class HYProductTask(HYTask):
+
+    @property
+    def site(self):
+        return self.task_data['site']
+
+    @property
+    def params(self):
+        dct = {}
+        if self.task_data.get('asin'):
+            dct['asin'] = self.task_data['asin']
+        if self.task_data.get('category_id_path'):
+            category_ids = self.task_data.get('category_id_path').split(":")
+            for i, _id in enumerate(category_ids):
+                dct["p_l{}_id".format(i+1)] = _id
+        return dct
+
+
 def handle(group, task):
-    hy_task = HYTask(task)
-    station = hy_task.task_data['site'].upper()
-    asins = hy_task.task_data['asins']
-    result = GetAmazonProductBySearch(station, asins=asins).request()
-    if result["status"] == "success":
-        products = productInfo(hy_task.task_data['site'], result["result"])
+    hy_task = HYProductTask(task)
+    site = hy_task.site
+    station = site.upper()
+    params = hy_task.params
+    current_page = 1
+    no_more_data = False
+    while not no_more_data:
+        result = GetAmazonProductBySearch(station, current_page=current_page, **params).request()
+        if not result or result["status"] != "success":
+            break
+        current_page += 1
+        no_more_data = result["no_more_data"]
+        products = productInfo(site, result.get("result", []))
+        additonal_infos = []
+        for asins in products.asins():
+            result = GetAmazonProductAdditionalInfo(station, asins=asins).request()
+            if result and result["status"] == "success":
+                additonal_infos.extend(result.get("result", []))
+        relationships = relationshipInfo(site, additonal_infos)
+
+        # save data into db
         with engine.connect() as conn:
+            # update product
             for infos in products.parsed_infos():
                 asins = map(lambda x:x["asin"], infos)
                 old_records = conn.execute(
                     select([amazon_product.c.asin, amazon_product.c.hy_update_time])
                     .where(
-                        amazon_product.c.asin.in_(asins)
-                    )).fetchall()
+                        and_(
+                            amazon_product.c.asin.in_(asins),
+                            amazon_product.c.site == site
+                        )
+                    )
+                ).fetchall()
                 old_records_map = {item[amazon_product.c.asin]:
                                 item[amazon_product.c.hy_update_time]
                                 for item in old_records}
@@ -118,11 +205,18 @@ def handle(group, task):
                     conn.execute(amazon_product.insert(), add_records)
                 if update_records:
                     for item in update_records:
-                        item['_id'] = item['asin']
+                        item['_asin'] = item['asin']
+                        item['_site'] = item['site']
                     conn.execute(
                         amazon_product.update()
-                        .where(amazon_product.c.asin == bindparam('_id'))
+                        .where(
+                            and_(
+                                amazon_product.c.asin == bindparam('_asin'),
+                                amazon_product.c.site == bindparam('_site')
+                            )
+                        )
                         .values(
+                            category_ids=bindparam('category_ids'),
                             parent_asin=bindparam('parent_asin'),
                             merchant_id=bindparam('merchant_id'),
                             merchant_name=bindparam('merchant_name'),
@@ -146,6 +240,55 @@ def handle(group, task):
                             update_time=bindparam('update_time'),
                             imgs=bindparam('imgs'),
                             description=bindparam('description')
+                        ),
+                        update_records
+                    )
+
+            # update product relation
+            for infos in relationships.parsed_infos():
+                asins = map(lambda x:x["asin"], infos)
+                old_records = conn.execute(
+                    select([amazon_product_relationship.c.asin,
+                            amazon_product_relationship.c.to_asin])
+                    .where(
+                        and_(
+                            amazon_product_relationship.c.asin.in_(asins),
+                            amazon_product_relationship.c.site == site
+                        )
+                    )
+                ).fetchall()
+                old_records_map = defaultdict(set)
+                for item in old_records:
+                    old_records_map[item[amazon_product_relationship.c.asin]].add(
+                            item[amazon_product_relationship.c.to_asin]
+                    )
+                update_records = []
+                add_records = []
+                for info in infos:
+                    add_to_asins = info['to_asins'] - old_records_map.get(info['asin'], set([]))
+                    update_to_asins = info['to_asins'] - add_to_asins
+                    add_records.extend([{"to_asin": to_asin, "site": site,
+                                         "asin": info["asin"],
+                                         "update_time": info["update_time"]}
+                                        for to_asin in add_to_asins])
+                    update_records.extend([{"_to_asin": to_asin, "_site": site,
+                                            "_asin": info["asin"],
+                                            "update_time": info["update_time"]}
+                                           for to_asin in update_to_asins])
+                if add_records:
+                    conn.execute(amazon_product_relationship.insert(), add_records)
+                if update_records:
+                    conn.execute(
+                        amazon_product.update()
+                        .where(
+                            and_(
+                                amazon_product.c.to_asin == bindparam('_to_asin'),
+                                amazon_product.c.site == bindparam('_site'),
+                                amazon_product.c.asin == bindparam('_asin')
+                            )
+                        )
+                        .values(
+                            update_time=bindparam('update_time')
                         ),
                         update_records
                     )
