@@ -1,5 +1,6 @@
 import re
 import json
+import random
 from datetime import datetime, timedelta
 from sqlalchemy import create_engine
 from sqlalchemy.sql import select, and_, bindparam
@@ -35,27 +36,39 @@ async def clean_relationship():
 
 async def create_task():
     sites = ['us']
-    limit = 100
+    limit = 500
     for site in sites:
         offset = 0
+        category_id_set = set([])
+        category_id_path_ls = []
         with engine.connect() as conn:
             while True:
                 records = conn.execute(
-                    select([amazon_category.c.category_id_path])
+                    select([amazon_category.c.category_id,
+                            amazon_category.c.category_id_path])
                     .where(amazon_category.c.site == site)
                     .limit(limit).offset(offset)
                 ).fetchall()
-                task_ls = [json.dumps({
-                    "task": "amazon_product_sync",
-                    "data": {
-                        "site": site,
-                        "category_id_path": record[amazon_category.c.category_id_path]
-                    }
-                }) for record in records]
-                await mpub_to_nsq(NSQ_NSQD_HTTP_ADDR, TOPIC_NAME, task_ls)
+                for record in records:
+                    if record[amazon_category.c.category_id] not in category_id_set:
+                        category_id_path_ls.append(record[amazon_category.c.category_id_path])
+                        category_id_set.add(record[amazon_category.c.category_id])
                 if len(records) < limit:
                     break
                 offset += len(records)
+        random.shuffle(category_id_path_ls)
+        i = 0
+        pub_limit = 200
+        while i < len(category_id_path_ls):
+            task_ls = [json.dumps({
+                "task": "amazon_product_sync",
+                "data": {
+                    "site": site,
+                    "category_id_path": category_id_path
+                }
+            }) for category_id_path in category_id_path_ls[i:i+pub_limit]]
+            await mpub_to_nsq(NSQ_NSQD_HTTP_ADDR, TOPIC_NAME, task_ls)
+            i += pub_limit
 
 
 def run():

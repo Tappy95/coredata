@@ -13,7 +13,7 @@ from models.amazon_models import amazon_product, amazon_product_relationship
 from util.pub import pub_to_nsq
 from util.log import logger
 
-WORKER_NUMBER = 10
+WORKER_NUMBER = 3
 MAX_STATEMENT = 4900
 RELATIONSHIP_MIN_UPDATE = timedelta(days=14)
 TOPIC_NAME = 'haiying.amazon.product'
@@ -180,9 +180,8 @@ def handle(group, task):
                 additonal_infos.extend(result.get("result", []))
         relationships = relationshipInfo(site, additonal_infos)
 
-        # save data into db
+        # update product
         with engine.connect() as conn:
-            # update product
             for infos in products.parsed_infos():
                 asins = map(lambda x:x["asin"], infos)
                 old_records = conn.execute(
@@ -250,7 +249,8 @@ def handle(group, task):
                         )
                         i += MAX_STATEMENT
 
-            # update product relation
+        # update product relation
+        with engine.connect() as conn:
             for infos in relationships.parsed_infos():
                 asins = map(lambda x:x["asin"], infos)
                 old_records = conn.execute(
