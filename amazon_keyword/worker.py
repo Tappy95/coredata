@@ -90,6 +90,9 @@ class TaskModel:
                                          amazon_keyword_task.c.last_update])).fetchall()
         return task
 
+    def __del__(self):
+        self.conn.close()
+
 
 class AmazonTask(TaskModel):
 
@@ -219,7 +222,7 @@ def run():
     group.add_input_endpoint('input', input_end)
     group.add_output_endpoint('output', output_end, ('test',))
 
-    server.add_routine_worker(task.show_asin_list, interval=60*3)
+    server.add_routine_worker(task.show_asin_list, interval=60*3, immediately=True)
     server.add_routine_worker(task.get_keyword_rank, interval=60*24*7)
     server.add_routine_worker(task.maintain_mon, interval=60*24*20)
 
