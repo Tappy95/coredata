@@ -1,8 +1,8 @@
 from sqlalchemy import Table, Column, PrimaryKeyConstraint, Integer, String, TIMESTAMP,\
-    Boolean, TEXT, DECIMAL, DateTime
+    Boolean, TEXT, DECIMAL
 from sqlalchemy.dialects.mysql import TINYINT
 from models import metadata
-import datetime
+
 
 amazon_keyword_rank = Table(
     'amazon_keyword_rank', metadata,
@@ -20,15 +20,15 @@ amazon_keyword_task = Table(
     Column('asin', String),
     Column('id', String),
     Column('keyword', String),
+    Column('station', String),
     Column('status', String),
     Column('monitoring_num', Integer),
     Column('monitoring_count', Integer),
-    Column('start_time', TIMESTAMP),
-    Column('created_at', TIMESTAMP),
-    Column('end_time', TIMESTAMP),
     Column('monitoring_type', String),
+    Column('start_time', TIMESTAMP),
+    Column('end_time', TIMESTAMP),
+    Column('created_at', TIMESTAMP),
     Column('deleted_at', TIMESTAMP),
-    Column('station', String),
     Column('is_add', String),
     Column('last_update', String),
     PrimaryKeyConstraint('id', name='pk')
