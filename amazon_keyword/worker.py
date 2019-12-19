@@ -178,7 +178,8 @@ class AmazonTask(TaskModel):
                     conn.execute(update(amazon_keyword_task).values({"is_add": 0}).where(
                         amazon_keyword_task.c.id == [mon_result[2]]))
 
-                # end_time 与 last_update 时间间隔不超过1天 判断为活跃监控信息 (当end_time 时间快结束时 调用删除api删除当前监控信息并 添加新的监控api)
+                # end_time 与 last_update 时间间隔不超过1天 判断为活跃监控信息 (当end_time 时间快结束时
+                # 调用删除api删除当前监控信息并 添加新的监控api)
                 elif interval.days <= 1:
                     del_fail = DelAmazonKWM(
                         ids=[mon_result[2]]
@@ -220,6 +221,6 @@ def run():
 
     server.add_routine_worker(task.show_asin_list, interval=60*3)
     server.add_routine_worker(task.get_keyword_rank, interval=60*24*7)
-    server.add_routine_worker(task.maintain_mon, interval=60*24*20, immediately=True)
+    server.add_routine_worker(task.maintain_mon, interval=60*24*20)
 
     server.run()
