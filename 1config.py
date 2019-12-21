@@ -3,9 +3,9 @@ import os
 PRODUCTION_ENV = True if os.environ.get('ENV_TYPE')=='PRODUCTION' else False
 
 
-NSQ_LOOKUPD_HTTP_ADDR = 'bd-nsqlookupd:4161' if PRODUCTION_ENV else '134.73.133.2:25761'
-NSQ_NSQD_TCP_ADDR = 'bd-nsqd:4150' if PRODUCTION_ENV else '134.73.133.2:25750'
-NSQ_NSQD_HTTP_ADDR = 'bd-nsqd:4151' if PRODUCTION_ENV else '134.73.133.2:25751'
+NSQ_LOOKUPD_HTTP_ADDR = '47.102.220.1:4161'
+NSQ_NSQD_TCP_ADDR = '47.102.220.1:4150'
+NSQ_NSQD_HTTP_ADDR = '47.102.220.1:4151'
 
 INPUT_NSQ_CONF = {
     'lookupd_http_addresses': [NSQ_LOOKUPD_HTTP_ADDR]
@@ -15,9 +15,9 @@ OUTPUT_NSQ_CONF = {
 }
 
 
-DB_USER_NAME = "root" if PRODUCTION_ENV else "linkcool"
-DB_USER_PW = "@ie0bzy3!dlpq*d7" if PRODUCTION_ENV else "forconnect"
-DB_SEVER_ADDR = "10.0.1.4:4000" if PRODUCTION_ENV else "119.145.69.74:43021"
+DB_USER_NAME = "root"
+DB_USER_PW = ""
+DB_SEVER_ADDR = "47.102.220.1:3306"
 DB_DATABASE_NAME = "bigdata"
 SQLALCHEMY_DATABASE_URI = "mysql+pymysql://{name:s}:{pw:s}@{addr:s}/{db:s}".format(
     name=DB_USER_NAME,

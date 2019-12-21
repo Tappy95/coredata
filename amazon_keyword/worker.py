@@ -8,6 +8,7 @@ from pipeflow import NsqInputEndpoint, NsqOutputEndpoint
 from config import *
 from task_protocol import HYTask
 from models.amazon_models import amazon_keyword_task, amazon_keyword_rank
+from api.amazon_keyword import GetAmazonKWMAllResult
 
 WORKER_NUMBER = 1
 TOPIC_NAME = 'haiying.amazon.keyword'
@@ -35,6 +36,14 @@ class KeywordTaskInfo:
         9:'AU',
     }
 
+    _status_map = {
+        -2:"InvalidKeyword",
+        -1:"InvalidAsin",
+        0:"NormalAsin",
+        1:"ParentAsin",
+        2:"LandingAsin"
+    }
+
     def __init__(self, infos):
         
         self.infos = infos
@@ -45,7 +54,7 @@ class KeywordTaskInfo:
         parsed_info = {
             "asin": info["asin"],
             "keyword":info["keyword"],
-            "status":info["status"],
+            "status":self._status_map.get(info["status"]),
             "monitoring_num":info["monitoring_num"],
             "monitoring_count":info["monitoring_count"],
             "monitoring_type":info["monitoring_type"],
@@ -55,18 +64,18 @@ class KeywordTaskInfo:
             "created_at":info["created_at"],
             "deleted_at":info["deleted_at"],
             "is_add":info["is_add"],
-            "last_update":info["last_update"],
+            "last_update":self.time_now,
         }
 
 
         return parsed_info
 
-        def parsed_infos(self, batch=1000):
-            info_cnt = len(self.infos)
-            i = 0
-            while i < info_cnt:
-                yield list(map(self.parse, self.infos[i:i + batch]))
-                i += batch
+        # def parsed_infos(self, batch=1000):
+        #     info_cnt = len(self.infos)
+        #     i = 0
+        #     while i < info_cnt:
+        #         yield list(map(self.parse, self.infos[i:i + batch]))
+        #         i += batch
         
         
 class HYKeyWordTask(HYTask):
@@ -78,6 +87,8 @@ class HYKeyWordTask(HYTask):
 
 def handle(group, task):
     hy_task = HYKeyWordTask(task)
+    result = GetAmazonKWMAllResult('US').request()
+    print(result)
 
 
 
@@ -85,13 +96,13 @@ def handle(group, task):
 
 
 
-
-if __name__ == '__main__':
-    # def run():
-    input_end = NsqInputEndpoint('top_song', 'haiying_crawler', 2, **INPUT_NSQ_CONF)
+# if __name__ == '__main__':
+def run():
+    input_end = NsqInputEndpoint('haiying.amazon.keyword', 'haiying_crawler', 2, **INPUT_NSQ_CONF)
 
     server = pipeflow.Server()
     group = server.add_group('main', 2)
     group.set_handle(handle, "thread")
+    group.add_input_endpoint('input', input_end)
 
     server.run()
