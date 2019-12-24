@@ -1,7 +1,7 @@
 import json
 from datetime import datetime
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select, and_
 from sqlalchemy.dialects.mysql import insert
 
 import pipeflow
@@ -9,7 +9,7 @@ from pipeflow import NsqInputEndpoint, NsqOutputEndpoint
 from config import *
 from task_protocol import HYTask
 from models.amazon_models import amazon_keyword_task, amazon_keyword_rank
-from api.amazon_keyword import GetAmazonKWMAllResult, GetAmazonKWMStatus, AddAmazonKWM
+from api.amazon_keyword import GetAmazonKWMAllResult, GetAmazonKWMStatus, AddAmazonKWM, GetAmazonKWMResult
 from util.pub import pub_to_nsq
 
 WORKER_NUMBER = 2
@@ -50,7 +50,6 @@ class KeywordTaskInfo:
         self.infos = infos
         self.time_now = datetime.now()
 
-    # info = result.get("result", [])
     def parse(self, info):
         parsed_info = {
             "asin": info["asin"],
@@ -67,8 +66,38 @@ class KeywordTaskInfo:
             "is_add": info["is_add"],
             "last_update": self.time_now,
         }
-
         return parsed_info
+
+    def parsed_infos(self, batch=1000):
+        info_cnt = len(self.infos)
+        i = 0
+        while i < info_cnt:
+            yield list(map(self.parse, self.infos[i:i + batch]))
+            i += batch
+
+class KeywordRankInfo:
+
+    def __init__(self, infos):
+        self.infos = infos
+        self.time_now = datetime.now()
+
+    def parse(self, info):
+        parsed_info = {
+            "asin": info["asin"],
+            "keyword": info["keyword"],
+            "site": info['station'],
+            "rank": info["keyword_rank"],
+            "aid": info["aid"],
+            "update_time": self.time_now,
+        }
+        return parsed_info
+
+    def parsed_infos(self, batch=1000):
+        info_cnt = len(self.infos)
+        i = 0
+        while i < info_cnt:
+            yield list(map(self.parse, self.infos[i:i + batch]))
+            i += batch
 
 
 class HYKeyWordTask(HYTask):
@@ -78,57 +107,71 @@ class HYKeyWordTask(HYTask):
         dct = {}
         if self.task_data.get('station'):
             dct['station'] = self.task_data['station']
-        # if self.task_data.get('asin_and_keywords'):
-        #     dct['asin_and_keywords'] = self.task_data['asin_and_keywords']
+        if self.task_data.get('asin_and_keywords'):
+            dct['asin_and_keywords'] = self.task_data['asin_and_keywords']
         if self.task_data.get('num_of_days'):
             dct['num_of_days'] = self.task_data['num_of_days']
         if self.task_data.get('monitoring_num'):
             dct['monitoring_num'] = self.task_data['monitoring_num']
-        dct['asin_and_keywords'] = [{"asin": "B07PY52GVP", "keyword": "XiaoMi"}]
         return dct
+
+
+
+
 
 
 def handle(group, task):
     print('a')
+    # 获取NSQ中的任务参数
     hy_task = HYKeyWordTask(task)
-    params = hy_task.params
-    result = GetAmazonKWMStatus(**params).request()
     print(hy_task.data)
-    print(result)
-    # 获取查询参数
-    if result["status"] == "success":
-        Kw_Task = KeywordTaskInfo(result["result"])
+    params = hy_task.params
+    station = params.get('station')
+    for item in params.get('asin_and_keywords'):
+        asin = item['asin']
+        keyword = item['keyword']
+    # 根据任务参数决定任务性质即
+    # 获取商品ID,关键词,站点HYKeyWordTask.params
         with engine.connect() as conn:
-            for infos in amazon_keyword_task.parsed_infos():
-                insert_stmt = insert(amazon_keyword_task)
-                on_duplicate_key_stmt = insert_stmt.on_duplicate_key_update(
-                    id=insert_stmt.inserted.id,
-                    asin=insert_stmt.inserted.asin,
-                    keyword=insert_stmt.inserted.keyword,
-                    status=insert_stmt.inserted.status,
-                    monitoring_num=insert_stmt.inserted.monitoring_num,
-                    monitoring_count=insert_stmt.inserted.monitoring_count,
-                    monitoring_type=insert_stmt.inserted.monitoring_type,
-                    station=insert_stmt.inserted.station,
-                    start_time=insert_stmt.inserted.start_time,
-                    end_time=insert_stmt.inserted.end_time,
-                    created_at=insert_stmt.inserted.created_at,
-                    deleted_at=insert_stmt.inserted.deleted_at,
-                    is_add=insert_stmt.inserted.is_add,
-                    last_update=insert_stmt.inserted.last_update,
+            result_from_db = conn.execute(
+                select([amazon_keyword_rank])
+                .where(
+                    and_(
+                        amazon_keyword_rank.c.asin == asin,
+                        amazon_keyword_rank.c.keyword == keyword,
+                        amazon_keyword_rank.c.site == station.upper()
+                    )
                 )
-                conn.execute(on_duplicate_key_stmt, infos)
-    # 有返回数据,没有下发任务
+            ).fetchall()
+            # 数据库存在kw_rank
+            if result_from_db:
+                result_from_db_kwrank = {item[amazon_keyword_rank.c.keyword]:
+                                         item[amazon_keyword_rank.c.rank]
+                                         for item in result_from_db}
+                print(result_from_db_kwrank)
+            # 数据库不存在kw_rank
+            else:
+                result_from_HY = GetAmazonKWMResult(
+                    ids = params.get('ids'),
+                    start_time = '',
+                    end_time = '',
+                ).request()
+                if result_from_HY['msg'] == 'success':
+                    keyword_list = KeywordRankInfo(result_from_HY)
+                    print(keyword_list)
 
+    # 查询数据库amazon_keyword_rank,
+    # if 存在,按参数取出数据返回
+    # else不存在则向HY下发爬取任务,带参数商品ID,关键词,站点,查询频率
 
-async def create_task():
+async def create_hy_task():
     stations = ['US']
     for station in stations:
         task = {
             "task": "amazon_keyword_sync",
             "data": {
                 "station": station,
-                "asin_and_keywords": "",
+                "asin_and_keywords": '',
                 "num_of_days": 30,
                 "monitoring_num": 48,
             }
@@ -138,25 +181,18 @@ async def create_task():
 
 def run():
     input_end = NsqInputEndpoint(TOPIC_NAME, 'haiying_crawler', WORKER_NUMBER, **INPUT_NSQ_CONF)
-    print(1)
     output_end = NsqOutputEndpoint(**OUTPUT_NSQ_CONF)
-    print(1)
 
     server = pipeflow.Server()
-    print(1)
     group = server.add_group('main', WORKER_NUMBER)
-    print(1)
     group.set_handle(handle, "thread")
-    print(1)
     group.add_input_endpoint('input', input_end)
-    print(1)
     group.add_output_endpoint('output', output_end)
-    print(1)
 
-    server.add_routine_worker(create_task, interval=60 * 24 * 7, immediately=True)
-    print(8)
+    server.add_routine_worker(create_hy_task, interval=60 * 24 * 7, immediately=True)
+    print("run server")
     server.run()
-    print(9)
+    print("end")
 
 
 if __name__ == '__main__':
