@@ -15,7 +15,7 @@ OUTPUT_NSQ_CONF = {
 }
 
 
-DB_USER_NAME = "root"
+DB_USER_NAME = "song"
 DB_USER_PW = ""
 DB_SEVER_ADDR = "47.102.220.1:3306"
 DB_DATABASE_NAME = "bigdata"

@@ -1,12 +1,12 @@
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from sqlalchemy import create_engine, select, and_
 from sqlalchemy.dialects.mysql import insert
 
 import pipeflow
 from pipeflow import NsqInputEndpoint, NsqOutputEndpoint
-from config import *
+from config_1 import *
 from task_protocol import HYTask
 from models.amazon_models import amazon_keyword_task, amazon_keyword_rank
 from api.amazon_keyword import GetAmazonKWMAllResult, GetAmazonKWMStatus, AddAmazonKWM, GetAmazonKWMResult
@@ -26,7 +26,7 @@ engine = create_engine(
 
 
 class KeywordTaskInfo:
-    _station_map = {
+    station_map = {
         1: 'US',
         2: 'IT',
         3: 'JP',
@@ -38,56 +38,54 @@ class KeywordTaskInfo:
         9: 'AU',
     }
 
-    _status_map = {
-        -2: "InvalidKeyword",
-        -1: "InvalidAsin",
-        0: "NormalAsin",
-        1: "ParentAsin",
-        2: "LandingAsin"
-    }
 
-    def __init__(self, infos):
-        self.infos = infos
-        self.time_now = datetime.now()
+    def __init__(self):
+        # self.infos = info
+        self.time_now = (datetime.now()).strftime('%Y-%m-%d %H:%M:%S')
 
     def parse(self, info):
         parsed_info = {
+            "id": info["id"],
             "asin": info["asin"],
             "keyword": info["keyword"],
-            "status": self._status_map.get(info["status"]),
+            "status": info["status"],
             "monitoring_num": info["monitoring_num"],
             "monitoring_count": info["monitoring_count"],
             "monitoring_type": info["monitoring_type"],
-            "station": self._station_map.get(info["station"]),
+            "station": self.station_map.get(info["station"]),
             "start_time": info["start_time"],
             "end_time": info["end_time"],
             "created_at": info["created_at"],
             "deleted_at": info["deleted_at"],
-            "is_add": info["is_add"],
+            "is_add": 1,
             "last_update": self.time_now,
         }
         return parsed_info
 
-    def parsed_infos(self, batch=1000):
-        info_cnt = len(self.infos)
-        i = 0
-        while i < info_cnt:
-            yield list(map(self.parse, self.infos[i:i + batch]))
-            i += batch
+    # def parsed_infos(self, batch=1000):
+    #     info_cnt = len(self.infos)
+    #     i = 0
+    #     while i < info_cnt:
+    #         yield list(map(self.parse, self.infos[i:i + batch]))
+    #         i += batch
+
 
 class KeywordRankInfo:
 
     def __init__(self, infos):
         self.infos = infos
-        self.time_now = datetime.now()
-
+        self.time_now = (datetime.now()).strftime('%Y-%m-%d %H:%M:%S')
+    # TODO:
     def parse(self, info):
         parsed_info = {
             "asin": info["asin"],
             "keyword": info["keyword"],
-            "site": info['station'],
-            "rank": info["keyword_rank"],
-            "aid": info["aid"],
+            # "site": KeywordTaskInfo.station_map.get(info['station']),
+            "site": 'US',
+            # "rank": info["keyword_rank"],
+            "rank": 1,
+            # "aid": info["aid"],
+            "aid": 1,
             "update_time": self.time_now,
         }
         return parsed_info
@@ -100,82 +98,156 @@ class KeywordRankInfo:
             i += batch
 
 
-class HYKeyWordTask(HYTask):
-
-    @property
-    def params(self):
-        dct = {}
-        if self.task_data.get('station'):
-            dct['station'] = self.task_data['station']
-        if self.task_data.get('asin_and_keywords'):
-            dct['asin_and_keywords'] = self.task_data['asin_and_keywords']
-        if self.task_data.get('num_of_days'):
-            dct['num_of_days'] = self.task_data['num_of_days']
-        if self.task_data.get('monitoring_num'):
-            dct['monitoring_num'] = self.task_data['monitoring_num']
-        return dct
-
-
-
-
-
-
 def handle(group, task):
-    print('a')
-    # 获取NSQ中的任务参数
-    hy_task = HYKeyWordTask(task)
-    print(hy_task.data)
-    params = hy_task.params
-    station = params.get('station')
-    for item in params.get('asin_and_keywords'):
-        asin = item['asin']
-        keyword = item['keyword']
-    # 根据任务参数决定任务性质即
-    # 获取商品ID,关键词,站点HYKeyWordTask.params
-        with engine.connect() as conn:
-            result_from_db = conn.execute(
-                select([amazon_keyword_rank])
-                .where(
-                    and_(
-                        amazon_keyword_rank.c.asin == asin,
-                        amazon_keyword_rank.c.keyword == keyword,
-                        amazon_keyword_rank.c.site == station.upper()
-                    )
-                )
-            ).fetchall()
-            # 数据库存在kw_rank
-            if result_from_db:
-                result_from_db_kwrank = {item[amazon_keyword_rank.c.keyword]:
-                                         item[amazon_keyword_rank.c.rank]
-                                         for item in result_from_db}
-                print(result_from_db_kwrank)
-            # 数据库不存在kw_rank
-            else:
-                result_from_HY = GetAmazonKWMResult(
-                    ids = params.get('ids'),
-                    start_time = '',
-                    end_time = '',
-                ).request()
-                if result_from_HY['msg'] == 'success':
-                    keyword_list = KeywordRankInfo(result_from_HY)
-                    print(keyword_list)
+    # 获取NSQ中的任务参数(虚拟爬虫已经检查过rankdb中没有数据)
+    hy_task = HYTask(task)
+    site = hy_task.task_data['site']
+    asin = hy_task.task_data['asin']
+    keyword = hy_task.task_data['keyword']
+    # 用任务参数查DB中的task表
+    with engine.connect() as conn:
+        select_task = select([amazon_keyword_task]) \
+            .where(
+            and_(
+                amazon_keyword_task.c.station == site.upper(),
+                amazon_keyword_task.c.asin == asin,
+                amazon_keyword_task.c.keyword == keyword
+            )
+        )
+        select_task_info = conn.execute(select_task).first()
+        # 若task中存在此关键词监控任务
+        print("是否有关键词监控任务",select_task_info['id'])
+        if select_task_info != None:
+            print("task表中有任务,根据参数查排名纪录")
+            ids = [select_task_info['id']]
+            # 默认查询当天的关键词排名记录
+            start_time = (datetime.now()).strftime('%Y-%m-%d %H:%M:%S')
+            end_time = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d %H:%M:%S')
+            # 从数据库中获取参数
+            # for row in select_task_info:
+            #     ids.append([row['id']])
 
-    # 查询数据库amazon_keyword_rank,
-    # if 存在,按参数取出数据返回
-    # else不存在则向HY下发爬取任务,带参数商品ID,关键词,站点,查询频率
+            # 向海鹰下发获取关键词排名监控记录
+            result = GetAmazonKWMResult(
+                ids=ids,
+                start_time=start_time,
+                end_time=end_time,
+            ).request()
+            # 获取成功,解析json后持久化到DB
+            if result and result['msg'] == 'success':
+                print("获取关键词排名",result['result'])
+                keyword_rank = KeywordRankInfo(result.get("result", []))
+                for infos in keyword_rank.parsed_infos():
+                    insert_stmt = insert(amazon_keyword_rank)
+                    on_duplicate_key_stmt = insert_stmt.on_duplicate_key_update(
+                        asin=insert_stmt.inserted.asin,
+                        keyword=insert_stmt.inserted.keyword,
+                        site=insert_stmt.inserted.site,
+                        rank=insert_stmt.inserted.rank,
+                        aid=insert_stmt.inserted.aid,
+                        update_time=insert_stmt.inserted.update_time,
+                    )
+                    conn.execute(on_duplicate_key_stmt, infos)
+                    print("更新amazon_rank成功")
+        # task表中无此任务,发布新的监控排名任务
+        else:
+            print("没有关键词任务,创建任务")
+            asin_and_keywords = [{"asin": asin, "keyword": keyword}]
+            num_of_days = 30
+            monitoring_num = 4
+            result_from_addtask = AddAmazonKWM(
+                station=site,
+                asin_and_keywords=asin_and_keywords,
+                num_of_days=num_of_days,
+                monitoring_num=monitoring_num,
+            ).request()
+            print("在HY创建监控任务",result_from_addtask)
+            # 获取添加任务的ID,向海鹰获取监控商品信息
+            if result_from_addtask and result_from_addtask["msg"] == "success":
+                task_id = []
+                for one_task in result_from_addtask['result']:
+                    task_id.append(one_task['id'])
+                asin_list_result = GetAmazonKWMStatus(
+                    station=site,
+                    capture_status=2,
+                    ids=task_id,
+                ).request()
+                print("获取 任务ID",asin_list_result)
+                if asin_list_result['msg'] == "success":
+                    # addithona_infos.extend(asin_list_result.get("result", []))
+                    # keyword_taskinfo = KeywordTaskInfo(asin_list_result['result'])
+                    for total_task in asin_list_result['result']['list']:
+
+                        keyword_taskinfo = KeywordTaskInfo()
+                        print(total_task)
+                        with engine.connect() as conn:
+                            print(keyword_taskinfo.parse(total_task))
+                            # for infos in keyword_taskinfo.parse(total_task):
+                            infos = keyword_taskinfo.parse(total_task)
+                            insert_stmt = insert(amazon_keyword_task)
+                            onduplicate_key_stmt = insert_stmt.on_duplicate_key_update(
+                                id=insert_stmt.inserted.id,
+                                asin=insert_stmt.inserted.asin,
+                                keyword=insert_stmt.inserted.keyword,
+                                status=insert_stmt.inserted.status,
+                                monitoring_num=insert_stmt.inserted.monitoring_num,
+                                monitoring_count=insert_stmt.inserted.monitoring_count,
+                                monitoring_type=insert_stmt.inserted.monitoring_type,
+                                station=insert_stmt.inserted.station,
+                                start_time=insert_stmt.inserted.start_time,
+                                end_time=insert_stmt.inserted.end_time,
+                                created_at=insert_stmt.inserted.created_at,
+                                deleted_at=insert_stmt.inserted.deleted_at,
+                                is_add=insert_stmt.inserted.start_time,
+                                last_update=insert_stmt.inserted.last_update,
+                            )
+                            conn.execute(onduplicate_key_stmt, infos)
+                    print("更新amazon_task成功")
+                    # 通过参数发任务更新rank
+                    ids = [asin_list_result['result']['list']['id']]
+                    # 默认查询当天的关键词排名记录
+                    start_time = (datetime.now()).strftime('%Y-%m-%d %H:%M:%S')
+                    end_time = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d %H:%M:%S')
+                    # 从数据库中获取参数
+                    # for row in select_task_info:
+                    #     ids.append([row['id']])
+
+                    # 向海鹰下发获取关键词排名监控记录
+                    result = GetAmazonKWMResult(
+                        ids=ids,
+                        start_time=start_time,
+                        end_time=end_time,
+                    ).request()
+                    # 获取成功,解析json后持久化到DB
+                    if result and result['msg'] == 'success':
+                        print("获取关键词排名", result['result'])
+                        keyword_rank = KeywordRankInfo(result.get("result", []))
+                        for infos in keyword_rank.parsed_infos():
+                            insert_stmt = insert(amazon_keyword_rank)
+                            on_duplicate_key_stmt = insert_stmt.on_duplicate_key_update(
+                                asin=insert_stmt.inserted.asin,
+                                keyword=insert_stmt.inserted.keyword,
+                                site=insert_stmt.inserted.site,
+                                rank=insert_stmt.inserted.rank,
+                                aid=insert_stmt.inserted.aid,
+                                update_time=insert_stmt.inserted.update_time,
+                            )
+                            conn.execute(on_duplicate_key_stmt, infos)
+                            print("更新amazon_rank成功")
+
 
 async def create_hy_task():
-    stations = ['US']
-    for station in stations:
+    sites = ['US']
+    for site in sites:
         task = {
-            "task": "amazon_keyword_sync",
+            "task": "haiying.amazon.keyword",
             "data": {
-                "station": station,
-                "asin_and_keywords": '',
-                "num_of_days": 30,
-                "monitoring_num": 48,
+                "site": site,
+                "asin": "B002JOO448",
+                "keyword": "football",
             }
         }
+        print(json.dumps(task))
         await pub_to_nsq(NSQ_NSQD_HTTP_ADDR, TOPIC_NAME, json.dumps(task))
 
 
