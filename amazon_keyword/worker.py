@@ -6,10 +6,10 @@ from sqlalchemy.dialects.mysql import insert
 
 import pipeflow
 from pipeflow import NsqInputEndpoint, NsqOutputEndpoint
-from config_1 import *
+from config import *
 from task_protocol import HYTask
 from models.amazon_models import amazon_keyword_task, amazon_keyword_rank
-from api.amazon_keyword import GetAmazonKWMAllResult, GetAmazonKWMStatus, AddAmazonKWM, GetAmazonKWMResult
+from api.amazon_keyword import GetAmazonKWMStatus, AddAmazonKWM, GetAmazonKWMResult
 from util.pub import pub_to_nsq
 
 WORKER_NUMBER = 2
@@ -38,9 +38,7 @@ class KeywordTaskInfo:
         9: 'AU',
     }
 
-
     def __init__(self):
-        # self.infos = info
         self.time_now = (datetime.now()).strftime('%Y-%m-%d %H:%M:%S')
 
     def parse(self, info):
@@ -62,20 +60,14 @@ class KeywordTaskInfo:
         }
         return parsed_info
 
-    # def parsed_infos(self, batch=1000):
-    #     info_cnt = len(self.infos)
-    #     i = 0
-    #     while i < info_cnt:
-    #         yield list(map(self.parse, self.infos[i:i + batch]))
-    #         i += batch
-
 
 class KeywordRankInfo:
 
     def __init__(self, infos):
         self.infos = infos
         self.time_now = (datetime.now()).strftime('%Y-%m-%d %H:%M:%S')
-    # TODO:
+
+    # TODO: API不可用,这里写死了测试
     def parse(self, info):
         parsed_info = {
             "asin": info["asin"],
@@ -97,7 +89,7 @@ class KeywordRankInfo:
             yield list(map(self.parse, self.infos[i:i + batch]))
             i += batch
 
-
+# TODO:写完了,没优化...
 def handle(group, task):
     # 获取NSQ中的任务参数(虚拟爬虫已经检查过rankdb中没有数据)
     hy_task = HYTask(task)
@@ -116,7 +108,7 @@ def handle(group, task):
         )
         select_task_info = conn.execute(select_task).first()
         # 若task中存在此关键词监控任务
-        print("是否有关键词监控任务",select_task_info['id'])
+        print("是否有关键词监控任务", select_task_info)
         if select_task_info != None:
             print("task表中有任务,根据参数查排名纪录")
             ids = [select_task_info['id']]
@@ -124,8 +116,6 @@ def handle(group, task):
             start_time = (datetime.now()).strftime('%Y-%m-%d %H:%M:%S')
             end_time = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d %H:%M:%S')
             # 从数据库中获取参数
-            # for row in select_task_info:
-            #     ids.append([row['id']])
 
             # 向海鹰下发获取关键词排名监控记录
             result = GetAmazonKWMResult(
@@ -135,7 +125,7 @@ def handle(group, task):
             ).request()
             # 获取成功,解析json后持久化到DB
             if result and result['msg'] == 'success':
-                print("获取关键词排名",result['result'])
+                print("获取关键词排名", result['result'])
                 keyword_rank = KeywordRankInfo(result.get("result", []))
                 for infos in keyword_rank.parsed_infos():
                     insert_stmt = insert(amazon_keyword_rank)
@@ -150,6 +140,7 @@ def handle(group, task):
                     conn.execute(on_duplicate_key_stmt, infos)
                     print("更新amazon_rank成功")
         # task表中无此任务,发布新的监控排名任务
+        # TODO:有bug,没找出来
         else:
             print("没有关键词任务,创建任务")
             asin_and_keywords = [{"asin": asin, "keyword": keyword}]
@@ -161,7 +152,7 @@ def handle(group, task):
                 num_of_days=num_of_days,
                 monitoring_num=monitoring_num,
             ).request()
-            print("在HY创建监控任务",result_from_addtask)
+            print("在HY创建监控任务", result_from_addtask)
             # 获取添加任务的ID,向海鹰获取监控商品信息
             if result_from_addtask and result_from_addtask["msg"] == "success":
                 task_id = []
@@ -172,17 +163,13 @@ def handle(group, task):
                     capture_status=2,
                     ids=task_id,
                 ).request()
-                print("获取 任务ID",asin_list_result)
+                print("获取 任务ID", asin_list_result)
                 if asin_list_result['msg'] == "success":
-                    # addithona_infos.extend(asin_list_result.get("result", []))
-                    # keyword_taskinfo = KeywordTaskInfo(asin_list_result['result'])
                     for total_task in asin_list_result['result']['list']:
-
                         keyword_taskinfo = KeywordTaskInfo()
                         print(total_task)
                         with engine.connect() as conn:
                             print(keyword_taskinfo.parse(total_task))
-                            # for infos in keyword_taskinfo.parse(total_task):
                             infos = keyword_taskinfo.parse(total_task)
                             insert_stmt = insert(amazon_keyword_task)
                             onduplicate_key_stmt = insert_stmt.on_duplicate_key_update(
@@ -204,14 +191,11 @@ def handle(group, task):
                             conn.execute(onduplicate_key_stmt, infos)
                     print("更新amazon_task成功")
                     # 通过参数发任务更新rank
-                    ids = [asin_list_result['result']['list']['id']]
+                    ids = [asin_list_result['result']['list'][0]['id']]
                     # 默认查询当天的关键词排名记录
                     start_time = (datetime.now()).strftime('%Y-%m-%d %H:%M:%S')
                     end_time = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d %H:%M:%S')
                     # 从数据库中获取参数
-                    # for row in select_task_info:
-                    #     ids.append([row['id']])
-
                     # 向海鹰下发获取关键词排名监控记录
                     result = GetAmazonKWMResult(
                         ids=ids,
@@ -243,8 +227,8 @@ async def create_hy_task():
             "task": "haiying.amazon.keyword",
             "data": {
                 "site": site,
-                "asin": "B002JOO448",
-                "keyword": "football",
+                "asin": "B07KMM96GV",
+                "keyword": "airjordans 11",
             }
         }
         print(json.dumps(task))
@@ -265,7 +249,6 @@ def run():
     print("run server")
     server.run()
     print("end")
-
 
 if __name__ == '__main__':
     run()
